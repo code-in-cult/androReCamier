@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>monoandroid11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>MjpegStreamer</RootNamespace>
+    <ApplicationTitle>MjpegStreamer</ApplicationTitle>
+    <AndroidManifest>Properties\AndroidManifest.xml</AndroidManifest>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="MainActivity.cs" />
+    <Compile Include="CameraService.cs" />
+    <Compile Include="SimpleHttpServer.cs" />
+    <AndroidResource Include="Resources\layout\activity_main.axml" />
+    <AndroidResource Include="Resources\values\strings.xml" />
+    <AndroidResource Include="Resources\values\styles.xml" />
+    <None Include="Properties\AndroidManifest.xml" />
+  </ItemGroup>
+</Project>
