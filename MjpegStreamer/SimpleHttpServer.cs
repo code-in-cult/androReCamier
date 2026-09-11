@@ -10,7 +10,7 @@ using Android.Util;
 
 namespace MjpegStreamer
 {
-    // HTTP server with full camera control interface: streams, resolutions, exposure, ISO, focus, white balance
+    // HTTP server with full camera control interface: streams, resolutions, exposure, ISO, focus, white balance, and rotation
     public class SimpleHttpServer
     {
         readonly int port;
@@ -252,6 +252,26 @@ namespace MjpegStreamer
                         await WriteSimpleResponse(ns, "Invalid compensation parameter");
                     }
                 }
+                else if (path == "/rotation")
+                {
+                    // Set image rotation: /rotation?degrees=90
+                    if (int.TryParse(query, out int degrees))
+                    {
+                        camera.SetImageRotation(degrees);
+                        await WriteSimpleResponse(ns, $"Image rotation set to {degrees}°");
+                    }
+                    else
+                    {
+                        await WriteSimpleResponse(ns, "Invalid rotation parameter");
+                    }
+                }
+                else if (path == "/getrotation")
+                {
+                    // Get current rotation
+                    int rotation = camera.GetImageRotation();
+                    var json = $"{{\"rotation\": {rotation}}}";
+                    await WriteJsonResponse(ns, json);
+                }
                 else
                 {
                     var response = "HTTP/1.0 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: " + indexHtmlBytes.Length + "\r\n\r\n";
@@ -379,6 +399,9 @@ namespace MjpegStreamer
     button.secondary:hover { background: #5a6268; }
     button.danger { background: #dc3545; }
     button.danger:hover { background: #c82333; }
+    button.rotation-btn { padding: 8px 16px; background: #17a2b8; }
+    button.rotation-btn:hover { background: #138496; }
+    button.rotation-btn.active { background: #0c5460; font-weight: bold; }
     
     .control-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 15px; }
     .control-row > div { flex: 1; min-width: 200px; }
@@ -402,6 +425,9 @@ namespace MjpegStreamer
     .info-text { font-size: 12px; color: #666; margin-top: 4px; }
     
     input[type='checkbox'] { cursor: pointer; }
+    
+    .rotation-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .rotation-preview { margin-top: 12px; padding: 10px; background: #f9f9f9; border-radius: 4px; text-align: center; font-size: 12px; color: #666; }
   </style>
 </head>
 <body>
@@ -437,6 +463,20 @@ namespace MjpegStreamer
               <div class='info-text' id='currentRes'></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Image Rotation -->
+      <div class='control-panel'>
+        <div class='section'>
+          <div class='section-title'>Image Rotation</div>
+          <div class='rotation-buttons' id='rotationButtons'>
+            <button class='rotation-btn active' onclick='setRotation(0)'>0°</button>
+            <button class='rotation-btn' onclick='setRotation(90)'>90°</button>
+            <button class='rotation-btn' onclick='setRotation(180)'>180°</button>
+            <button class='rotation-btn' onclick='setRotation(270)'>270°</button>
+          </div>
+          <div class='rotation-preview' id='rotationPreview'>Current: 0°</div>
         </div>
       </div>
 
@@ -553,6 +593,7 @@ namespace MjpegStreamer
 
 <script>
 const STATUS_BOX = document.getElementById('status');
+let currentRotation = 0;
 
 function setStatus(msg, type = 'info') {
   STATUS_BOX.textContent = msg;
@@ -600,9 +641,42 @@ async function loadControls() {
     document.getElementById('focusSlider').max = controls.focus.max.toFixed(2);
     document.getElementById('focusRange').textContent = '0 - ' + controls.focus.max.toFixed(2);
     
+    // Load current rotation
+    const rotRes = await fetch('/getrotation');
+    const rotData = await rotRes.json();
+    currentRotation = rotData.rotation;
+    updateRotationUI(currentRotation);
+    
     setStatus('Controls loaded successfully', 'success');
   } catch (e) {
     setStatus('Failed to load controls: ' + e.message, 'error');
+  }
+}
+
+function updateRotationUI(rotation) {
+  // Update active button
+  const buttons = document.querySelectorAll('.rotation-btn');
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.textContent.includes(rotation + '°')) {
+      btn.classList.add('active');
+    }
+  });
+  
+  // Update preview text
+  document.getElementById('rotationPreview').textContent = 'Current: ' + rotation + '°';
+}
+
+async function setRotation(degrees) {
+  currentRotation = degrees;
+  updateRotationUI(degrees);
+  setStatus('Setting image rotation to ' + degrees + '°...');
+  
+  try {
+    await fetch('/rotation?' + degrees);
+    setStatus('Image rotation set to ' + degrees + '°', 'success');
+  } catch (e) {
+    setStatus('Error setting rotation: ' + e.message, 'error');
   }
 }
 
