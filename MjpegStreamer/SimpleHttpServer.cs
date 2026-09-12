@@ -10,7 +10,7 @@ using Android.Util;
 
 namespace MjpegStreamer
 {
-    // HTTP server with full camera control interface: streams, resolutions, exposure, ISO, focus, white balance, and rotation
+    // HTTP server with full camera control: streams, resolutions, manual controls, rotation, photo/video capture
     public class SimpleHttpServer
     {
         readonly int port;
@@ -120,6 +120,39 @@ namespace MjpegStreamer
                     camera.StopCapture();
                     await WriteSimpleResponse(ns, "Stopped camera.");
                 }
+                else if (path == "/photo")
+                {
+                    await WriteSimpleResponse(ns, "Capturing photo...");
+                    _ = Task.Run(async () =>
+                    {
+                        var ok = await camera.CapturePhotoAsync();
+                        statusCallback?.Invoke(ok ? "Photo captured." : "Photo capture failed.");
+                    });
+                }
+                else if (path == "/recordstart")
+                {
+                    await WriteSimpleResponse(ns, "Starting video recording...");
+                    _ = Task.Run(async () =>
+                    {
+                        var ok = await camera.StartVideoRecordingAsync();
+                        statusCallback?.Invoke(ok ? "Video recording started." : "Video recording start failed.");
+                    });
+                }
+                else if (path == "/recordstop")
+                {
+                    await WriteSimpleResponse(ns, "Stopping video recording...");
+                    _ = Task.Run(async () =>
+                    {
+                        var ok = await camera.StopVideoRecordingAsync();
+                        statusCallback?.Invoke(ok ? "Video recording stopped." : "Video recording stop failed.");
+                    });
+                }
+                else if (path == "/recordstatus")
+                {
+                    bool isRecording = camera.IsRecordingVideo();
+                    var json = $"{{\"isRecording\": {(isRecording ? "true" : "false")}}}";
+                    await WriteJsonResponse(ns, json);
+                }
                 else if (path == "/resolutions")
                 {
                     var resolutions = camera.GetSupportedResolutions();
@@ -157,13 +190,11 @@ namespace MjpegStreamer
                 }
                 else if (path == "/controls")
                 {
-                    // Get current control settings as JSON
                     var json = camera.GetControlRangesJson();
                     await WriteJsonResponse(ns, json);
                 }
                 else if (path == "/exposure")
                 {
-                    // Set exposure time: /exposure?us=1000 (microseconds)
                     if (long.TryParse(query, out long exposureUs))
                     {
                         camera.SetExposureTime(exposureUs);
@@ -176,7 +207,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/iso")
                 {
-                    // Set ISO: /iso?value=400
                     if (int.TryParse(query, out int iso))
                     {
                         camera.SetISO(iso);
@@ -189,7 +219,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/focus")
                 {
-                    // Set focus distance: /focus?distance=0.5
                     if (float.TryParse(query.Replace(",", "."), out float distance))
                     {
                         camera.SetFocusDistance(distance);
@@ -202,7 +231,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/autoexposure")
                 {
-                    // Enable/Disable auto exposure: /autoexposure?enabled=true
                     if (bool.TryParse(query, out bool enabled))
                     {
                         camera.SetAutoExposure(enabled);
@@ -215,7 +243,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/autofocus")
                 {
-                    // Enable/Disable auto focus: /autofocus?enabled=true
                     if (bool.TryParse(query, out bool enabled))
                     {
                         camera.SetAutoFocus(enabled);
@@ -228,7 +255,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/whitebalance")
                 {
-                    // Set white balance mode: /whitebalance?mode=daylight
                     if (Enum.TryParse<Android.Hardware.Camera2.ControlAwbMode>(query, true, out var mode))
                     {
                         camera.SetWhiteBalance(mode);
@@ -241,7 +267,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/exposurecomp")
                 {
-                    // Set exposure compensation: /exposurecomp?comp=1.5
                     if (float.TryParse(query.Replace(",", "."), out float comp))
                     {
                         camera.SetExposureCompensation(comp);
@@ -254,7 +279,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/rotation")
                 {
-                    // Set image rotation: /rotation?degrees=90
                     if (int.TryParse(query, out int degrees))
                     {
                         camera.SetImageRotation(degrees);
@@ -267,7 +291,6 @@ namespace MjpegStreamer
                 }
                 else if (path == "/getrotation")
                 {
-                    // Get current rotation
                     int rotation = camera.GetImageRotation();
                     var json = $"{{\"rotation\": {rotation}}}";
                     await WriteJsonResponse(ns, json);
@@ -399,6 +422,12 @@ namespace MjpegStreamer
     button.secondary:hover { background: #5a6268; }
     button.danger { background: #dc3545; }
     button.danger:hover { background: #c82333; }
+    button.success { background: #28a745; }
+    button.success:hover { background: #218838; }
+    button.warning { background: #ffc107; color: #333; }
+    button.warning:hover { background: #e0a800; }
+    button.recording { background: #dc3545; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
     button.rotation-btn { padding: 8px 16px; background: #17a2b8; }
     button.rotation-btn:hover { background: #138496; }
     button.rotation-btn.active { background: #0c5460; font-weight: bold; }
@@ -428,6 +457,13 @@ namespace MjpegStreamer
     
     .rotation-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
     .rotation-preview { margin-top: 12px; padding: 10px; background: #f9f9f9; border-radius: 4px; text-align: center; font-size: 12px; color: #666; }
+    
+    .capture-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    
+    .recording-indicator { display: inline-block; width: 12px; height: 12px; background: #dc3545; border-radius: 50%; animation: blink 1s infinite; margin-right: 8px; }
+    @keyframes blink { 0%, 50%, 100% { opacity: 1; } 25%, 75% { opacity: 0.3; } }
+    
+    .info-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 12px; color: #856404; }
   </style>
 </head>
 <body>
@@ -450,6 +486,22 @@ namespace MjpegStreamer
     </div>
 
     <div class='grid'>
+      <!-- Photo & Video Capture -->
+      <div class='control-panel'>
+        <div class='section'>
+          <div class='section-title'>📸 Photo & Video Capture</div>
+          <div class='capture-buttons'>
+            <button class='success' onclick='capturePhoto()'>📷 Take Photo</button>
+            <button id='recordBtn' class='warning' onclick='toggleVideoRecording()'>🎥 Start Recording</button>
+          </div>
+          <div class='info-box' id='recordingStatus' style='margin-top: 12px; display: none;'>
+            <span class='recording-indicator'></span>
+            <span>Video Recording Active</span>
+          </div>
+          <div class='info-text' style='margin-top: 12px;'>Photos and videos are saved to your device storage.</div>
+        </div>
+      </div>
+
       <!-- Resolution Settings -->
       <div class='control-panel'>
         <div class='section'>
@@ -594,11 +646,61 @@ namespace MjpegStreamer
 <script>
 const STATUS_BOX = document.getElementById('status');
 let currentRotation = 0;
+let isRecording = false;
 
 function setStatus(msg, type = 'info') {
   STATUS_BOX.textContent = msg;
   STATUS_BOX.style.borderLeftColor = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#17a2b8';
   STATUS_BOX.style.background = type === 'error' ? '#f8d7da' : type === 'success' ? '#d4edda' : '#e8f4f8';
+}
+
+async function capturePhoto() {
+  setStatus('Capturing photo...');
+  try {
+    await fetch('/photo');
+    setStatus('Photo captured and saved!', 'success');
+  } catch (e) {
+    setStatus('Error capturing photo: ' + e.message, 'error');
+  }
+}
+
+async function toggleVideoRecording() {
+  if (isRecording) {
+    setStatus('Stopping video recording...');
+    try {
+      await fetch('/recordstop');
+      isRecording = false;
+      updateRecordingUI();
+      setStatus('Video recording stopped and saved!', 'success');
+    } catch (e) {
+      setStatus('Error stopping video: ' + e.message, 'error');
+    }
+  } else {
+    setStatus('Starting video recording...');
+    try {
+      await fetch('/recordstart');
+      isRecording = true;
+      updateRecordingUI();
+      setStatus('Video recording in progress...', 'success');
+    } catch (e) {
+      setStatus('Error starting video: ' + e.message, 'error');
+    }
+  }
+}
+
+function updateRecordingUI() {
+  const recordBtn = document.getElementById('recordBtn');
+  const recordingStatus = document.getElementById('recordingStatus');
+  
+  if (isRecording) {
+    recordBtn.textContent = '⏹ Stop Recording';
+    recordBtn.classList.add('recording');
+    recordingStatus.style.display = 'block';
+  } else {
+    recordBtn.textContent = '🎥 Start Recording';
+    recordBtn.classList.remove('recording');
+    recordingStatus.style.display = 'none';
+  }
 }
 
 async function loadResolutions() {
@@ -627,7 +729,6 @@ async function loadControls() {
     const res = await fetch('/controls');
     const controls = await res.json();
     
-    // Update sliders and ranges
     const expMin = Math.round(controls.exposure.min / 1000);
     const expMax = Math.round(controls.exposure.max / 1000);
     document.getElementById('exposureSlider').min = expMin;
@@ -641,11 +742,11 @@ async function loadControls() {
     document.getElementById('focusSlider').max = controls.focus.max.toFixed(2);
     document.getElementById('focusRange').textContent = '0 - ' + controls.focus.max.toFixed(2);
     
-    // Load current rotation
-    const rotRes = await fetch('/getrotation');
-    const rotData = await rotRes.json();
-    currentRotation = rotData.rotation;
+    currentRotation = controls.rotation;
     updateRotationUI(currentRotation);
+    
+    isRecording = controls.isRecordingVideo;
+    updateRecordingUI();
     
     setStatus('Controls loaded successfully', 'success');
   } catch (e) {
@@ -654,7 +755,6 @@ async function loadControls() {
 }
 
 function updateRotationUI(rotation) {
-  // Update active button
   const buttons = document.querySelectorAll('.rotation-btn');
   buttons.forEach(btn => {
     btn.classList.remove('active');
@@ -662,8 +762,6 @@ function updateRotationUI(rotation) {
       btn.classList.add('active');
     }
   });
-  
-  // Update preview text
   document.getElementById('rotationPreview').textContent = 'Current: ' + rotation + '°';
 }
 
@@ -782,6 +880,20 @@ async function changeWhiteBalance(mode) {
     setStatus('Error setting white balance: ' + e.message, 'error');
   }
 }
+
+// Check recording status every second
+setInterval(async () => {
+  try {
+    const res = await fetch('/recordstatus');
+    const data = await res.json();
+    if (isRecording !== data.isRecording) {
+      isRecording = data.isRecording;
+      updateRecordingUI();
+    }
+  } catch (e) {
+    // Silently ignore
+  }
+}, 1000);
 
 // Initialize on load
 window.addEventListener('load', () => {
